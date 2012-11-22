@@ -6,6 +6,7 @@ require 'anemone/exceptions'
 require 'anemone/page_store'
 require 'anemone/storage'
 require 'anemone/storage/base'
+require 'perftools'
 
 module Anemone
 
@@ -164,7 +165,7 @@ module Anemone
     #
     def run
       process_options
-
+      @index = 0
       @urls.delete_if { |url| !visit_link?(url) }
       return if @urls.empty?
 
@@ -176,7 +177,7 @@ module Anemone
       end
 
       @urls.each{ |url| link_queue.enq(url) }
-
+      PerfTools::CpuProfiler.start("./spider_profiler") do
       loop do
         page = page_queue.deq
         @pages.touch_key page.url
@@ -192,13 +193,16 @@ module Anemone
           @pages.touch_keys links
         end
 
+        @index += 1        
+        @stop_crawl = true if @index == 7200
 
         @pages[page.url] = page
-
         if @stop_crawl
           page_queue.clear
           link_queue.clear
         end
+
+        p "Queues sizes are #{link_queue.size} and #{page_queue.size}"
 
         # if we are done with the crawl, tell the threads to end
         if link_queue.empty? and page_queue.empty?
@@ -210,6 +214,7 @@ module Anemone
             break
           end
         end
+      end
       end
 
       @tentacles.each { |thread| thread.join }
